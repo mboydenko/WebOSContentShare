@@ -1,0 +1,10 @@
+{
+  "id": "com.contentshare.player.discovery",
+  "description": "Content Share server discovery",
+  "services": [
+    {
+      "name": "com.contentshare.player.discovery",
+      "description": "Finds Content Share servers on the local network"
+    }
+  ]
+}

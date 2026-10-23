@@ -88,6 +88,7 @@ var Browser = {
     $('browser-title').textContent = d.title || App.serverName;
     $('browser-path').textContent = d.root ? (App.serverName + (d.path ? ' / ' + d.path.split('/').join(' / ') : '')) : 'Медиапапки';
     $('browser-scroll').scrollTop = 0;
+    $('browser-back').className = 'btn back focusable' + (Browser.stack.length ? '' : ' hidden');
 
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];

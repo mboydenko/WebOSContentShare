@@ -31,8 +31,12 @@ var Viewer = {
     var c = $('viewer-caption');
     c.textContent = text;
     c.className = 'caption show';
+    Viewer.el.classList.add('ui-visible');
     clearTimeout(Viewer.captionTimer);
-    Viewer.captionTimer = setTimeout(function () { c.className = 'caption'; }, 3000);
+    Viewer.captionTimer = setTimeout(function () {
+      c.className = 'caption';
+      Viewer.el.classList.remove('ui-visible');
+    }, 3000);
   },
 
   step: function (d) {
@@ -71,5 +75,9 @@ var Viewer = {
 };
 
 Viewer.el.addEventListener('click', function (e) {
+  if (closestFocusable(e.target)) return; // the Back button
   Viewer.step(e.clientX < window.innerWidth / 2 ? -1 : 1);
+});
+Viewer.el.addEventListener('mousemove', function () {
+  if (App.screen === Viewer) Viewer.caption($('viewer-caption').textContent);
 });

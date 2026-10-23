@@ -15,6 +15,13 @@ body { color: #e8eaf0; font-family: "LG Smart UI", "Museo Sans", "Segoe UI", Rob
 .btn { display: inline-block; padding: 16px 34px; margin-right: 20px; border-radius: 12px; background: #232733; color: #e8eaf0; font-size: 28px; white-space: nowrap; cursor: pointer; border: 3px solid transparent; }
 .btn.small { padding: 10px 24px; font-size: 24px; margin-right: 0; }
 .btn.focused { background: #e8eaf0; color: #0f1115; }
+.btn.back { display: flex; align-items: center; padding: 12px 28px 12px 18px; margin-right: 34px; font-size: 26px; }
+.btn.back svg { width: 34px; height: 34px; margin-right: 10px; fill: currentColor; }
+.btn.hidden { display: none; }
+.top-bar { position: absolute; left: 80px; top: 50px; display: none; }
+.osd-visible .top-bar, .ui-visible .top-bar { display: block; }
+.top-bar .btn.back { background: rgba(35,39,51,.85); }
+.top-bar .btn.back.focused { background: #e8eaf0; }
 .input { width: 560px; height: 72px; box-sizing: border-box; padding: 0 22px; margin-right: 20px; font-size: 30px; color: #e8eaf0; background: #1b1e26; border: 3px solid #333846; border-radius: 12px; outline: none; }
 .input.focused { border-color: #4ea1ff; }
 .focusable { -webkit-transition: -webkit-transform .12s; transition: transform .12s; }

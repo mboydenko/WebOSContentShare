@@ -1,5 +1,6 @@
 mod admin;
 mod config;
+mod discovery;
 mod ffmpeg;
 mod library;
 mod media_api;
@@ -25,6 +26,8 @@ use tracing_subscriber::EnvFilter;
 pub struct AppState {
     pub config: RwLock<config::Config>,
     pub config_path: PathBuf,
+    /// Port actually listened on (the configured one may change until restart).
+    pub http_port: u16,
     pub cache_dir: PathBuf,
     pub tools: RwLock<ffmpeg::Tools>,
     pub caps: RwLock<ffmpeg::Caps>,
@@ -97,11 +100,10 @@ async fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
     let config_path = args.config.unwrap_or_else(config::default_path);
     let mut cfg = config::Config::load(&config_path)?;
+    // Persists defaults filled in for missing fields (notably a newly generated server_id).
+    cfg.save(&config_path)?;
     if let Some(p) = args.port {
         cfg.port = p;
-    }
-    if !config_path.exists() {
-        cfg.save(&config_path)?;
     }
     let cache_dir = dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("WebOSContentShare");
     std::fs::create_dir_all(&cache_dir)?;
@@ -112,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
         tools: RwLock::new(ffmpeg::Tools::locate(&cfg)),
         config: RwLock::new(cfg),
         config_path: config_path.clone(),
+        http_port: port,
         cache_dir,
         caps: RwLock::new(ffmpeg::Caps::default()),
         probes: ffmpeg::ProbeCache::default(),
@@ -121,6 +124,7 @@ async fn main() -> anyhow::Result<()> {
     });
     spawn_caps_detection(state.clone());
     tokio::spawn(state.sessions.clone().monitor());
+    tokio::spawn(discovery::run(state.clone()));
 
     let app = Router::new()
         .merge(media_api::router())

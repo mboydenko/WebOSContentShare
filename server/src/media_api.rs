@@ -39,6 +39,7 @@ pub fn router() -> Router<Shared> {
 async fn server_info(State(s): State<Shared>) -> Json<Value> {
     Json(json!({
         "app": "webos-content-share",
+        "id": s.cfg().server_id,
         "name": s.cfg().server_name,
         "version": env!("CARGO_PKG_VERSION"),
     }))

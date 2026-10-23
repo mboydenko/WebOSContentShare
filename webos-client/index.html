@@ -10,7 +10,10 @@
 <div id="app">
 
   <section id="screen-servers" class="screen">
-    <div class="header"><div class="h-title">Подключение к серверу</div></div>
+    <div class="header">
+      <div id="servers-back" class="btn back focusable"></div>
+      <div class="h-title">Подключение к серверу</div>
+    </div>
     <div class="servers-body">
       <div id="server-list" class="server-list"></div>
       <div id="scan-status" class="hint"></div>
@@ -27,6 +30,7 @@
 
   <section id="screen-browser" class="screen">
     <div class="header">
+      <div id="browser-back" class="btn back focusable"></div>
       <div class="crumbs">
         <div id="browser-title" class="h-title"></div>
         <div id="browser-path" class="h-sub"></div>
@@ -48,6 +52,7 @@
     </div>
     <div id="subtitle" class="subtitle"></div>
     <div id="spinner" class="spinner"></div>
+    <div class="top-bar"><div id="player-back" class="btn back focusable"></div></div>
     <div id="osd" class="osd">
       <div class="osd-top">
         <div id="osd-state" class="osd-state"></div>
@@ -70,6 +75,7 @@
   <section id="screen-viewer" class="screen">
     <img id="viewer-img" alt="">
     <div id="viewer-caption" class="caption"></div>
+    <div class="top-bar"><div id="viewer-back" class="btn back focusable"></div></div>
     <div id="viewer-spinner" class="spinner"></div>
   </section>
 

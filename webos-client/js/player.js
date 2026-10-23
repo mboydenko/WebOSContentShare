@@ -390,6 +390,7 @@ var Player = {
     Player.panelOpen = false;
     $('tracks').classList.remove('show');
     Nav.setScope(Player.el);
+    Nav.focus(null); // keys go to the player itself; the Back button is for the pointer
   },
 
   selectAudio: function (index) {

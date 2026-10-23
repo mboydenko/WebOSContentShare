@@ -23,11 +23,28 @@ var App = {
         if (App.screen !== Servers) App.show(Servers);
         return;
       }
-      Api.base = s.base;
-      App.serverName = s.name;
-      Store.set('server', s.base);
+      App.use(s);
       Browser.home();
     }, 5000);
+  },
+
+  /* On-screen "Back" buttons do exactly what the remote's Back key does. */
+  back: function () {
+    if (App.screen && App.screen.onKey) App.screen.onKey(KEY.BACK);
+  },
+
+  use: function (s) {
+    Api.base = s.base;
+    App.serverName = s.name;
+    Store.set('server', s.base);
+    if (s.id) Store.set('serverId', s.id);
+  },
+
+  /* No usable saved server: search the network and connect on our own if the choice is obvious. */
+  discover: function (message) {
+    Servers.autoConnect = true;
+    App.show(Servers);
+    if (message) toast(message, 4000);
   }
 };
 
@@ -72,6 +89,15 @@ function onVisibility() {
 document.addEventListener('visibilitychange', onVisibility);
 document.addEventListener('webkitvisibilitychange', onVisibility);
 
+(function initBackButtons() {
+  var arrow = '<svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>';
+  var buttons = document.querySelectorAll('.btn.back');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].innerHTML = arrow + 'Назад';
+    buttons[i].onActivate = App.back;
+  }
+})();
+
 (function start() {
   Player.init();
   // Opened from the server itself (http://pc:8200/app/): no discovery needed.
@@ -80,15 +106,13 @@ document.addEventListener('webkitvisibilitychange', onVisibility);
     return;
   }
   var saved = Store.get('server');
-  if (!saved) { App.show(Servers); return; }
+  if (!saved) { App.discover(); return; }
   probeServer(saved, function (s) {
     if (s) {
-      Api.base = s.base;
-      App.serverName = s.name;
+      App.use(s);
       Browser.home();
     } else {
-      App.show(Servers);
-      toast('Сохранённый сервер не отвечает — ищу серверы в сети', 4000);
+      App.discover('Сервер ' + saved.replace(/^https?:\/\//, '') + ' не отвечает — ищу в сети');
     }
   }, 4000);
 })();

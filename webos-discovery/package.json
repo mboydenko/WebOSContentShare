@@ -1,0 +1,6 @@
+{
+  "name": "com.contentshare.player.discovery",
+  "version": "1.0.0",
+  "description": "Finds Content Share servers on the local network via UDP broadcast",
+  "main": "service.js"
+}

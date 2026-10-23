@@ -71,6 +71,8 @@ impl Default for TranscodeSettings {
 #[serde(default)]
 pub struct Config {
     pub port: u16,
+    /// Stable identity so a TV can recognise its server after the PC's IP changes.
+    pub server_id: String,
     pub server_name: String,
     pub roots: Vec<Root>,
     pub ffmpeg_path: String,
@@ -83,6 +85,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 8200,
+            server_id: crate::util::random_id(),
             server_name: crate::util::hostname(),
             roots: Vec::new(),
             ffmpeg_path: String::new(),
