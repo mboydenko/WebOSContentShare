@@ -1,0 +1,14 @@
+{
+  "id": "com.contentshare.player",
+  "version": "1.0.0",
+  "vendor": "Content Share",
+  "type": "web",
+  "main": "index.html",
+  "title": "Content Share",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#0f1115",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "requiredPermissions": ["connectionmanager.query"]
+}

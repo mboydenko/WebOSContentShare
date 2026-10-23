@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content Share — сервер</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1d2129; --muted: #69707d; --line: #e3e5e9;
+    --accent: #2f6fed; --accent-text: #fff; --ok: #1f8f4e; --warn: #b26a00; --danger: #c93838;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111317; --card: #1a1d23; --text: #e7e9ee; --muted: #949aa6; --line: #2a2e36;
+      --accent: #5b8cff; --ok: #3cc47c; --warn: #f0a83a; --danger: #ff6b6b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  header h1 { font-size: 22px; margin: 0; flex: 1; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; border: 1px solid var(--line); }
+  .pill.ok { color: var(--ok); border-color: currentColor; }
+  .pill.warn { color: var(--warn); border-color: currentColor; }
+  .pill.bad { color: var(--danger); border-color: currentColor; }
+  .addr { font: 600 20px/1.3 ui-monospace, Consolas, monospace; user-select: all; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text], input[type=number], select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .item { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+  .item:first-child { border-top: 0; }
+  .item .name { font-weight: 600; }
+  .item .path { color: var(--muted); font-size: 13px; word-break: break-all; }
+  .empty { padding: 14px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 20px; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  label.field > * { color: var(--text); font-size: 15px; }
+  .hint { font-size: 13px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; border-top: 0; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+  .toast.show { opacity: 1; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); width: min(640px, calc(100% - 32px)); padding: 0; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-head { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .dlg-path { font: 13px ui-monospace, Consolas, monospace; color: var(--muted); word-break: break-all; margin-top: 4px; }
+  .dlg-list { max-height: 50vh; overflow: auto; }
+  .dlg-list div { padding: 9px 18px; cursor: pointer; border-top: 1px solid var(--line); }
+  .dlg-list div:hover { background: var(--bg); }
+  .dlg-foot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  @media (max-width: 600px) { .item { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Content Share — сервер</h1>
+    <span id="ffmpeg-pill" class="pill">ffmpeg…</span>
+    <span id="hw-pill" class="pill">ускорение…</span>
+  </header>
+
+  <section class="card">
+    <h2>Адрес для телевизора</h2>
+    <div id="urls" class="addr"></div>
+    <p class="hint">Приложение на ТВ находит сервер автоматически. Если не нашло — введите этот адрес вручную. Без установки приложения можно открыть <span id="web-url"></span> во встроенном браузере ТВ.</p>
+  </section>
+
+  <section class="card">
+    <h2>Медиапапки</h2>
+    <div id="roots" class="list"></div>
+    <div class="row" style="margin-top:12px">
+      <input id="root-path" class="grow" type="text" placeholder="Путь к папке, например D:\Фильмы">
+      <button id="browse">Обзор…</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="root-name" class="grow" type="text" placeholder="Название на ТВ (необязательно)">
+      <button id="add-root" class="primary">Добавить</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Что умеет телевизор</h2>
+    <p class="hint">Всё, что ТВ не поддерживает, сервер перепакует (видео копируется без потерь) или перекодирует. Если какой-то файл не воспроизводится, отключите здесь соответствующий формат.</p>
+    <div class="grid" id="tv">
+      <label class="check"><input type="checkbox" data-tv="hevc"> HEVC (H.265)</label>
+      <label class="check"><input type="checkbox" data-tv="vp9"> VP9</label>
+      <label class="check"><input type="checkbox" data-tv="av1"> AV1 (ТВ 2020+)</label>
+      <label class="check"><input type="checkbox" data-tv="dts"> DTS звук</label>
+      <label class="check"><input type="checkbox" data-tv="truehd"> Dolby TrueHD</label>
+      <label class="check"><input type="checkbox" data-tv="opus"> Opus/Vorbis в видеофайлах</label>
+      <label class="field">Максимальное разрешение ТВ
+        <select id="tv-res">
+          <option value="1920x1080">Full HD 1920×1080</option>
+          <option value="4096x2160">4K 3840×2160</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Перекодирование</h2>
+    <div class="grid">
+      <label class="field">Аппаратное ускорение
+        <select id="tc-hw">
+          <option value="auto">Авто</option>
+          <option value="none">Нет (только CPU)</option>
+          <option value="nvenc">NVIDIA NVENC</option>
+          <option value="qsv">Intel Quick Sync</option>
+          <option value="amf">AMD AMF</option>
+          <option value="vaapi">VAAPI (Linux)</option>
+        </select>
+      </label>
+      <label class="field">Кодек
+        <select id="tc-codec">
+          <option value="h264">H.264 — максимальная совместимость</option>
+          <option value="hevc">HEVC — сохраняет HDR, меньше битрейт</option>
+        </select>
+      </label>
+      <label class="field">Качество (меньше — лучше): <b id="tc-q-val"></b>
+        <input id="tc-quality" type="range" min="16" max="30" step="1">
+      </label>
+      <label class="field">Максимальный битрейт, Мбит/с
+        <input id="tc-bitrate" type="number" min="2" max="200">
+      </label>
+      <label class="field">Максимальная высота кадра
+        <select id="tc-height">
+          <option value="720">720p</option>
+          <option value="1080">1080p</option>
+          <option value="1440">1440p</option>
+          <option value="2160">2160p (4K)</option>
+        </select>
+      </label>
+      <label class="field">Одновременных трансляций
+        <input id="tc-sessions" type="number" min="1" max="10">
+      </label>
+    </div>
+    <p class="hint" id="hw-hint"></p>
+  </section>
+
+  <section class="card">
+    <h2>Сервер</h2>
+    <div class="grid">
+      <label class="field">Имя сервера на ТВ <input id="srv-name" type="text"></label>
+      <label class="field">Порт (нужен перезапуск) <input id="srv-port" type="number" min="1" max="65535"></label>
+      <label class="field">Путь к ffmpeg (пусто — искать автоматически) <input id="srv-ffmpeg" type="text"></label>
+      <label class="field">Путь к ffprobe (пусто — рядом с ffmpeg) <input id="srv-ffprobe" type="text"></label>
+    </div>
+    <p class="hint" id="tools-hint"></p>
+    <div class="row" style="justify-content:flex-end">
+      <button id="redetect">Перепроверить ffmpeg</button>
+      <button id="save" class="primary">Сохранить настройки</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Активные трансляции</h2>
+    <div id="sessions"></div>
+  </section>
+
+  <p class="hint" id="config-path"></p>
+</main>
+
+<dialog id="picker">
+  <div class="dlg-head"><b>Выберите папку</b><div id="pick-path" class="dlg-path"></div></div>
+  <div id="pick-list" class="dlg-list"></div>
+  <div class="dlg-foot">
+    <button id="pick-up">↑ Вверх</button>
+    <span class="grow"></span>
+    <button id="pick-cancel">Отмена</button>
+    <button id="pick-ok" class="primary">Выбрать эту папку</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let state = null;
+let formLoaded = false;
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function renderStatus() {
+  const c = state.caps;
+  const fp = $('ffmpeg-pill');
+  if (!c.detected) { fp.className = 'pill'; fp.textContent = 'ffmpeg: проверка…'; }
+  else if (c.ffmpegOk && c.ffprobeOk) { fp.className = 'pill ok'; fp.textContent = 'ffmpeg найден'; fp.title = c.version; }
+  else { fp.className = 'pill bad'; fp.textContent = 'ffmpeg не найден'; }
+  const hp = $('hw-pill');
+  const names = { nvenc: 'NVENC', qsv: 'Quick Sync', amf: 'AMD AMF', vaapi: 'VAAPI' };
+  if (!c.detected) { hp.className = 'pill'; hp.textContent = 'ускорение…'; }
+  else if (c.hw.length) { hp.className = 'pill ok'; hp.textContent = 'GPU: ' + c.hw.map((h) => names[h] || h).join(', '); }
+  else { hp.className = 'pill warn'; hp.textContent = 'Перекодирование на CPU'; }
+
+  $('urls').innerHTML = state.urls.length ? state.urls.map((u) => esc(u.replace('http://', ''))).join('<br>') : '<span class="muted">Сеть не найдена</span>';
+  $('web-url').textContent = state.urls[0] ? state.urls[0] + '/app/' : 'http://<адрес>/app/';
+  $('tools-hint').textContent = c.detected
+    ? `ffmpeg: ${state.tools.ffmpeg}${c.ffmpegOk ? '' : ' — не запускается'}; ffprobe: ${state.tools.ffprobe}${c.ffprobeOk ? '' : ' — не запускается'}`
+    : '';
+  $('hw-hint').textContent = c.detected
+    ? (c.hw.length ? 'Обнаружены рабочие аппаратные кодировщики: ' + c.hw.map((h) => names[h] || h).join(', ') + '.' : 'Аппаратные кодировщики не обнаружены — перекодирование будет на CPU (x264).')
+      + (c.tonemap ? ' HDR→SDR преобразование доступно.' : ' Фильтры HDR→SDR (zscale) недоступны в этой сборке ffmpeg.')
+    : '';
+  $('config-path').textContent = 'Файл настроек: ' + state.config_path + ' · версия ' + state.version;
+}
+
+function renderRoots() {
+  const el = $('roots');
+  if (!state.roots.length) { el.innerHTML = '<div class="empty">Папок пока нет. Добавьте папку с фильмами, музыкой или фото.</div>'; return; }
+  el.innerHTML = state.roots.map((r) => `
+    <div class="item">
+      <div class="grow">
+        <div class="name">${esc(r.name)} ${r.exists ? '' : '<span class="pill bad">недоступна</span>'}</div>
+        <div class="path">${esc(r.path)}</div>
+      </div>
+      <button class="danger" data-remove="${esc(r.id)}">Удалить</button>
+    </div>`).join('');
+}
+
+function renderSessions() {
+  const el = $('sessions');
+  if (!state.sessions.length) { el.innerHTML = '<div class="muted">Сейчас ничего не транслируется.</div>'; return; }
+  const modes = { remux: 'Перепаковка', transcode: 'Перекодирование', audio: 'Аудио' };
+  const t = (s) => { s = Math.floor(s); return Math.floor(s / 3600) + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  el.innerHTML = `<table><tr><th>Файл</th><th>Режим</th><th>Позиция</th><th>Состояние</th><th></th></tr>` +
+    state.sessions.map((s) => `<tr>
+      <td>${esc(s.title)}</td>
+      <td>${modes[s.mode] || s.mode} <span class="muted">${esc(s.encoder)}</span></td>
+      <td>${t(s.positionSecs)}</td>
+      <td>${s.finished ? 'готово' : s.suspended ? 'буфер заполнен' : 'идёт'}</td>
+      <td><button class="danger" data-kill="${esc(s.id)}">Остановить</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+function fillForm() {
+  document.querySelectorAll('[data-tv]').forEach((cb) => { cb.checked = !!state.tv[cb.dataset.tv]; });
+  $('tv-res').value = state.tv.max_height > 1080 ? '4096x2160' : '1920x1080';
+  const t = state.transcode;
+  $('tc-hw').value = t.hw; $('tc-codec').value = t.codec; $('tc-quality').value = t.quality;
+  $('tc-q-val').textContent = t.quality; $('tc-bitrate').value = t.max_bitrate_mbps;
+  $('tc-height').value = String(t.max_height); $('tc-sessions').value = t.max_sessions;
+  $('srv-name').value = state.server_name; $('srv-port').value = state.port;
+  $('srv-ffmpeg').value = state.ffmpeg_path; $('srv-ffprobe').value = state.ffprobe_path;
+}
+
+async function load() {
+  try {
+    state = await api('GET', '/api/admin/state');
+  } catch (e) { toast('Нет связи с сервером: ' + e.message); return; }
+  renderStatus(); renderRoots(); renderSessions();
+  if (!formLoaded) { fillForm(); formLoaded = true; }
+}
+
+$('add-root').onclick = async () => {
+  const path = $('root-path').value.trim();
+  if (!path) { toast('Укажите путь к папке'); return; }
+  try {
+    await api('POST', '/api/admin/roots', { path, name: $('root-name').value.trim() });
+    $('root-path').value = ''; $('root-name').value = '';
+    toast('Папка добавлена'); load();
+  } catch (e) { toast(e.message); }
+};
+
+$('roots').onclick = async (e) => {
+  const id = e.target.dataset.remove;
+  if (!id) return;
+  const r = state.roots.find((x) => x.id === id);
+  if (!confirm(`Убрать папку «${r ? r.name : id}» из списка? Файлы на диске не удаляются.`)) return;
+  try { await api('DELETE', '/api/admin/roots/' + encodeURIComponent(id)); load(); } catch (err) { toast(err.message); }
+};
+
+$('sessions').onclick = async (e) => {
+  const id = e.target.dataset.kill;
+  if (!id) return;
+  try { await api('DELETE', '/api/admin/sessions/' + encodeURIComponent(id)); load(); } catch (err) { toast(err.message); }
+};
+
+$('tc-quality').oninput = () => { $('tc-q-val').textContent = $('tc-quality').value; };
+
+$('save').onclick = async () => {
+  const tv = { ...state.tv };
+  document.querySelectorAll('[data-tv]').forEach((cb) => { tv[cb.dataset.tv] = cb.checked; });
+  const [w, h] = $('tv-res').value.split('x').map(Number);
+  tv.max_width = w; tv.max_height = h;
+  const body = {
+    server_name: $('srv-name').value,
+    port: Number($('srv-port').value),
+    ffmpeg_path: $('srv-ffmpeg').value,
+    ffprobe_path: $('srv-ffprobe').value,
+    tv,
+    transcode: {
+      hw: $('tc-hw').value,
+      codec: $('tc-codec').value,
+      quality: Number($('tc-quality').value),
+      max_bitrate_mbps: Number($('tc-bitrate').value) || 40,
+      max_height: Number($('tc-height').value),
+      max_sessions: Number($('tc-sessions').value) || 3,
+    },
+  };
+  try {
+    const r = await api('POST', '/api/admin/settings', body);
+    toast(r.restart_required ? 'Сохранено. Перезапустите сервер, чтобы сменить порт.' : 'Настройки сохранены');
+    formLoaded = false; load();
+  } catch (e) { toast(e.message); }
+};
+
+$('redetect').onclick = async () => {
+  await api('POST', '/api/admin/redetect');
+  toast('Проверяю ffmpeg и аппаратное ускорение…');
+  setTimeout(load, 1500); setTimeout(load, 6000);
+};
+
+// Folder picker
+let pickPath = '';
+async function pickLoad(path) {
+  try {
+    const d = await api('GET', '/api/admin/fs?path=' + encodeURIComponent(path));
+    pickPath = d.path || '';
+    $('pick-path').textContent = pickPath || 'Компьютер';
+    $('pick-up').disabled = !pickPath;
+    $('pick-up').dataset.parent = d.parent || '';
+    $('pick-ok').disabled = !pickPath;
+    $('pick-list').innerHTML = d.dirs.length
+      ? d.dirs.map((x) => `<div data-path="${esc(x.path)}">📁 ${esc(x.name)}</div>`).join('')
+      : '<div class="muted" style="cursor:default">Вложенных папок нет</div>';
+  } catch (e) { toast(e.message); }
+}
+$('browse').onclick = () => { $('picker').showModal(); pickLoad($('root-path').value.trim()); };
+$('pick-list').onclick = (e) => { const p = e.target.closest('[data-path]'); if (p) pickLoad(p.dataset.path); };
+$('pick-up').onclick = () => pickLoad($('pick-up').dataset.parent);
+$('pick-cancel').onclick = () => $('picker').close();
+$('pick-ok').onclick = () => { $('root-path').value = pickPath; $('picker').close(); };
+
+load();
+setInterval(() => { if (!document.hidden) load(); }, 4000);
+</script>
+</body>
+</html>

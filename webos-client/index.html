@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Content Share</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <section id="screen-servers" class="screen">
+    <div class="header"><div class="h-title">Подключение к серверу</div></div>
+    <div class="servers-body">
+      <div id="server-list" class="server-list"></div>
+      <div id="scan-status" class="hint"></div>
+      <div class="manual">
+        <div class="label">Или введите адрес сервера (показан в панели управления на компьютере):</div>
+        <div class="row">
+          <input id="server-input" class="input focusable" type="text" placeholder="192.168.1.10:8200">
+          <div id="server-connect" class="btn focusable">Подключиться</div>
+          <div id="server-scan" class="btn focusable">Искать снова</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-browser" class="screen">
+    <div class="header">
+      <div class="crumbs">
+        <div id="browser-title" class="h-title"></div>
+        <div id="browser-path" class="h-sub"></div>
+      </div>
+      <div id="browser-switch" class="btn small focusable">Сменить сервер</div>
+    </div>
+    <div id="browser-scroll" class="scroller">
+      <div id="browser-grid" class="grid"></div>
+      <div id="browser-empty" class="empty"></div>
+    </div>
+  </section>
+
+  <section id="screen-player" class="screen">
+    <video id="video" preload="auto"></video>
+    <div id="audio-art" class="audio-art">
+      <div class="art"><img id="audio-cover" alt=""></div>
+      <div id="audio-title" class="a-title"></div>
+      <div id="audio-sub" class="a-sub"></div>
+    </div>
+    <div id="subtitle" class="subtitle"></div>
+    <div id="spinner" class="spinner"></div>
+    <div id="osd" class="osd">
+      <div class="osd-top">
+        <div id="osd-state" class="osd-state"></div>
+        <div id="osd-title" class="osd-title"></div>
+        <div id="osd-badges" class="badges"></div>
+      </div>
+      <div class="progress"><div id="osd-bar" class="bar"></div><div id="osd-seek" class="seek-mark"></div></div>
+      <div class="osd-bottom">
+        <div id="osd-time" class="time"></div>
+        <div id="osd-hint" class="hint">◀ ▶ перемотка · OK пауза · ▼ звук и субтитры</div>
+        <div id="osd-dur" class="time"></div>
+      </div>
+    </div>
+    <div id="tracks" class="tracks">
+      <div class="col"><div class="col-title">Звуковая дорожка</div><div id="tracks-audio"></div></div>
+      <div class="col"><div class="col-title">Субтитры</div><div id="tracks-subs"></div></div>
+    </div>
+  </section>
+
+  <section id="screen-viewer" class="screen">
+    <img id="viewer-img" alt="">
+    <div id="viewer-caption" class="caption"></div>
+    <div id="viewer-spinner" class="spinner"></div>
+  </section>
+
+  <div id="dialog" class="dialog"><div class="dialog-box"><div id="dialog-text" class="dialog-text"></div><div id="dialog-buttons" class="row center"></div></div></div>
+  <div id="toast" class="toast"></div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/servers.js"></script>
+<script src="js/browser.js"></script>
+<script src="js/player.js"></script>
+<script src="js/viewer.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
