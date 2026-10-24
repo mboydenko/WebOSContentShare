@@ -21,6 +21,9 @@ pub struct TvProfile {
     pub truehd: bool,
     /// Opus/Vorbis audio inside MKV/WebM video files.
     pub opus: bool,
+    /// H.264 with more reference frames is transcoded: TV decoders stutter on
+    /// heavy x264 encodes (ref=12, bframes=12) even when they are within spec. 0 = no limit.
+    pub h264_max_refs: u32,
     pub max_width: u32,
     pub max_height: u32,
 }
@@ -34,6 +37,7 @@ impl Default for TvProfile {
             dts: false,
             truehd: false,
             opus: false,
+            h264_max_refs: 4,
             max_width: 4096,
             max_height: 2160,
         }

@@ -32,6 +32,38 @@ function qs(params) {
   return parts.join('&');
 }
 
+/* Where the client runs: the TV app/browser (native HLS, Dolby audio) or a desktop browser. */
+var Device = {
+  isTv: /Web0S|webOS/i.test(navigator.userAgent) || typeof window.PalmSystem !== 'undefined',
+
+  name: function () { return Device.isTv ? 'tv' : 'browser'; },
+
+  /* Desktop browsers play our HLS through hls.js: Firefox has no native HLS and
+     Edge's native player stalls on it. The TV keeps its native player. */
+  useHlsJs: function () {
+    return !Device.isTv && !!(window.MediaSource && window.MediaSource.isTypeSupported);
+  },
+
+  canDolby: function () {
+    if (Device.isTv) return true;
+    try {
+      return window.MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"') &&
+        window.MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
+    } catch (e) {
+      return false;
+    }
+  },
+
+  loadHls: function (cb) {
+    if (window.Hls) return cb(null);
+    var s = document.createElement('script');
+    s.src = 'js/hls.min.js';
+    s.onload = function () { cb(null); };
+    s.onerror = function () { cb(new Error('Не удалось загрузить hls.js')); };
+    document.head.appendChild(s);
+  }
+};
+
 var Store = {
   get: function (k, def) {
     try { var v = window.localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; }

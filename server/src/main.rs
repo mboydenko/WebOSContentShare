@@ -2,6 +2,7 @@ mod admin;
 mod config;
 mod discovery;
 mod ffmpeg;
+mod h264;
 mod library;
 mod media_api;
 mod plan;

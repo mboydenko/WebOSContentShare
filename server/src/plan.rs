@@ -66,6 +66,13 @@ fn video_ok(v: &Stream, tv: &TvProfile, for_ts: bool) -> Result<(), String> {
     if v.width > tv.max_width || v.height > tv.max_height {
         return Err(format!("Разрешение {}x{} выше поддерживаемого ТВ", v.width, v.height));
     }
+    // Copying the stream would not help here: the decoder load is the problem, so this rules out remux too.
+    if v.codec == "h264" && tv.h264_max_refs > 0 && v.refs > tv.h264_max_refs {
+        return Err(format!(
+            "H.264 с {} опорными кадрами (ТВ справляется с {}) — воспроизведение тормозило бы",
+            v.refs, tv.h264_max_refs
+        ));
+    }
     let chroma_ok = !(v.pix_fmt.contains("422") || v.pix_fmt.contains("444"));
     let ok = match v.codec.as_str() {
         "h264" => v.bits <= 8 && chroma_ok,
@@ -292,6 +299,8 @@ pub struct StreamReq {
     pub audio: Option<usize>,
     pub burn: Option<usize>,
     pub force_transcode: bool,
+    /// The client cannot decode Dolby audio (desktop Firefox/Chrome via MSE): send AAC.
+    pub aac_only: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -376,7 +385,7 @@ pub fn attempts(p: &Probe, abs: &Path, req: &StreamReq, cfg: &Config, caps: &Cap
         let mut a = input_args(p, abs, remux_start, None);
         a.extend(["-map".into(), format!("0:{}", video.index), "-c:v".into(), "copy".into()]);
         if let Some(au) = audio {
-            audio_args(&mut a, au, &cfg.tv);
+            audio_args(&mut a, au, &cfg.tv, req.aac_only);
         }
         hls_output(&mut a);
         list.push(Attempt { mode: Mode::Remux, encoder: "copy".into(), start: remux_start, args: a });
@@ -414,10 +423,13 @@ fn input_args(p: &Probe, abs: &Path, start: f64, hw: Option<&str>) -> Vec<String
     a
 }
 
-fn audio_args(a: &mut Vec<String>, s: &Stream, tv: &TvProfile) {
+fn audio_args(a: &mut Vec<String>, s: &Stream, tv: &TvProfile, aac_only: bool) {
     a.extend(["-map".into(), format!("0:{}", s.index)]);
-    if audio_ok(s, tv, false, true) {
+    let copy_ok = if aac_only { matches!(s.codec.as_str(), "aac" | "mp3") } else { audio_ok(s, tv, false, true) };
+    if copy_ok {
         a.extend(args(&["-c:a", "copy"]));
+    } else if s.channels > 2 && aac_only {
+        a.extend(args(&["-c:a", "aac", "-b:a", "384k", "-ac", "6"]));
     } else if s.channels > 2 {
         // Keeps surround sound; AC3 is passed through to soundbars/receivers.
         a.extend(args(&["-c:a", "ac3", "-b:a", "640k"]));
@@ -561,7 +573,7 @@ fn transcode_args(
     }
 
     if let Some(au) = audio {
-        audio_args(&mut a, au, &cfg.tv);
+        audio_args(&mut a, au, &cfg.tv, req.aac_only);
     }
     hls_output(&mut a);
     a
@@ -612,11 +624,23 @@ mod tests {
         let info = media_info(&p, Path::new("a.mkv"), &TvProfile::default(), vec![]);
         assert!(!info.direct);
         assert_eq!(info.stream_mode, "remux");
-        let req = StreamReq { start: 0.0, audio: None, burn: None, force_transcode: false };
+        let req = StreamReq { start: 0.0, audio: None, burn: None, force_transcode: false, aac_only: false };
         let list = attempts(&p, Path::new("a.mkv"), &req, &Config::default(), &Caps::default(), 0.0);
         assert_eq!(list[0].mode, Mode::Remux);
         let joined = list[0].args.join(" ");
         assert!(joined.contains("-c:v copy") && joined.contains("-c:a ac3"), "{joined}");
+    }
+
+    #[test]
+    fn heavy_h264_is_transcoded_not_remuxed() {
+        let mut v = video("h264", 8);
+        v.refs = 12;
+        let p = probe("matroska,webm", vec![v, audio("ac3", 6)]);
+        let info = media_info(&p, Path::new("a.mkv"), &TvProfile::default(), vec![]);
+        assert!(!info.direct);
+        assert_eq!(info.stream_mode, "transcode");
+        let unlimited = TvProfile { h264_max_refs: 0, ..TvProfile::default() };
+        assert!(media_info(&p, Path::new("a.mkv"), &unlimited, vec![]).direct);
     }
 
     #[test]

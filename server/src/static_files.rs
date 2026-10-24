@@ -29,6 +29,7 @@ static CLIENT: &[(&str, &str, &[u8])] = client_files! {
     "js/player.js" => "application/javascript; charset=utf-8",
     "js/viewer.js" => "application/javascript; charset=utf-8",
     "js/app.js" => "application/javascript; charset=utf-8",
+    "js/hls.min.js" => "application/javascript; charset=utf-8",
     "icon.png" => "image/png",
     "largeIcon.png" => "image/png",
 };

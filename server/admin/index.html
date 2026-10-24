@@ -89,7 +89,7 @@
 
   <section class="card">
     <h2>Что умеет телевизор</h2>
-    <p class="hint">Всё, что ТВ не поддерживает, сервер перепакует (видео копируется без потерь) или перекодирует. Если какой-то файл не воспроизводится, отключите здесь соответствующий формат.</p>
+    <p class="hint">Всё, что ТВ не поддерживает, сервер перепакует (видео копируется без потерь) или перекодирует. Если какой-то файл не воспроизводится, отключите здесь соответствующий формат. Если видео H.264 тормозит, уменьшите лимит опорных кадров: такие «тяжёлые» файлы будут перекодироваться.</p>
     <div class="grid" id="tv">
       <label class="check"><input type="checkbox" data-tv="hevc"> HEVC (H.265)</label>
       <label class="check"><input type="checkbox" data-tv="vp9"> VP9</label>
@@ -97,6 +97,9 @@
       <label class="check"><input type="checkbox" data-tv="dts"> DTS звук</label>
       <label class="check"><input type="checkbox" data-tv="truehd"> Dolby TrueHD</label>
       <label class="check"><input type="checkbox" data-tv="opus"> Opus/Vorbis в видеофайлах</label>
+      <label class="field">H.264: максимум опорных кадров (0 — без ограничений)
+        <input id="tv-refs" type="number" min="0" max="16">
+      </label>
       <label class="field">Максимальное разрешение ТВ
         <select id="tv-res">
           <option value="1920x1080">Full HD 1920×1080</option>
@@ -265,6 +268,7 @@ function renderSessions() {
 function fillForm() {
   document.querySelectorAll('[data-tv]').forEach((cb) => { cb.checked = !!state.tv[cb.dataset.tv]; });
   $('tv-res').value = state.tv.max_height > 1080 ? '4096x2160' : '1920x1080';
+  $('tv-refs').value = state.tv.h264_max_refs;
   const t = state.transcode;
   $('tc-hw').value = t.hw; $('tc-codec').value = t.codec; $('tc-quality').value = t.quality;
   $('tc-q-val').textContent = t.quality; $('tc-bitrate').value = t.max_bitrate_mbps;
@@ -312,6 +316,7 @@ $('save').onclick = async () => {
   document.querySelectorAll('[data-tv]').forEach((cb) => { tv[cb.dataset.tv] = cb.checked; });
   const [w, h] = $('tv-res').value.split('x').map(Number);
   tv.max_width = w; tv.max_height = h;
+  tv.h264_max_refs = Math.max(0, Number($('tv-refs').value) || 0);
   const body = {
     server_name: $('srv-name').value,
     port: Number($('srv-port').value),

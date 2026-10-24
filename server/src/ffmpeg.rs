@@ -150,6 +150,8 @@ pub struct Stream {
     pub color_transfer: String,
     pub dovi: bool,
     pub bits: u32,
+    /// H.264 max_num_ref_frames from the SPS (0 = unknown).
+    pub refs: u32,
     pub fps: f64,
     pub channels: u32,
     pub language: String,
@@ -211,10 +213,16 @@ impl Stream {
             .get("side_data_list")
             .and_then(Value::as_array)
             .is_some_and(|l| l.iter().any(|sd| str_of(sd, "side_data_type").contains("DOVI")));
+        let codec = str_of(v, "codec_name");
+        let refs = if codec == "h264" {
+            crate::h264::max_ref_frames(&crate::h264::parse_hexdump(&str_of(v, "extradata"))).unwrap_or(0)
+        } else {
+            0
+        };
         Self {
             index: v.get("index").and_then(Value::as_u64).unwrap_or(0) as usize,
             codec_type: str_of(v, "codec_type"),
-            codec: str_of(v, "codec_name"),
+            codec,
             profile: str_of(v, "profile"),
             width: f64_of(v, "width") as u32,
             height: f64_of(v, "height") as u32,
@@ -223,6 +231,7 @@ impl Stream {
             color_transfer: str_of(v, "color_transfer"),
             dovi,
             bits,
+            refs,
             fps,
             channels: f64_of(v, "channels") as u32,
             language: tag("language"),
@@ -328,7 +337,8 @@ async fn run_probe(tools: &Tools, path: &Path) -> Result<Probe> {
     let out = timeout(
         Duration::from_secs(60),
         command(&tools.ffprobe)
-            .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams"])
+            // -show_data adds codec extradata, which carries the H.264 SPS.
+            .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data"])
             .arg(file_arg(path))
             .output(),
     )

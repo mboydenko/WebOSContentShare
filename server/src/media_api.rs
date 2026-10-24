@@ -77,10 +77,21 @@ async fn browse(State(s): State<Shared>, Query(q): Query<BrowseQuery>) -> ApiRes
 struct FileQuery {
     root: String,
     path: String,
+    device: Option<String>,
+}
+
+/// The TV profile describes the TV's hardware decoder. A desktop browser (used for testing
+/// or watching on the PC) decodes heavy H.264 easily, so the reference-frame limit is lifted.
+fn config_for_device(s: &Shared, device: Option<&str>) -> crate::config::Config {
+    let mut cfg = s.cfg();
+    if device == Some("browser") {
+        cfg.tv.h264_max_refs = 0;
+    }
+    cfg
 }
 
 async fn media(State(s): State<Shared>, Query(q): Query<FileQuery>) -> ApiResult<Json<plan::MediaInfo>> {
-    let cfg = s.cfg();
+    let cfg = config_for_device(&s, q.device.as_deref());
     let abs = library::resolve(&cfg, &q.root, &q.path)?;
     let kind = library::kind_of(&abs);
     if !matches!(kind, Kind::Video | Kind::Audio) {
@@ -171,10 +182,13 @@ struct StartQuery {
     burn: Option<usize>,
     mode: Option<String>,
     client: Option<String>,
+    device: Option<String>,
+    /// 1 when the client cannot decode AC3/E-AC3/DTS.
+    aac: Option<u8>,
 }
 
 async fn stream_start(State(s): State<Shared>, Query(q): Query<StartQuery>) -> ApiResult<Json<Value>> {
-    let cfg = s.cfg();
+    let cfg = config_for_device(&s, q.device.as_deref());
     let abs = library::resolve(&cfg, &q.root, &q.path)?;
     let tools = s.tools();
     let caps = s.caps();
@@ -188,6 +202,7 @@ async fn stream_start(State(s): State<Shared>, Query(q): Query<StartQuery>) -> A
         audio: q.audio,
         burn: q.burn,
         force_transcode: q.mode.as_deref() == Some("transcode"),
+        aac_only: q.aac == Some(1),
     };
 
     let mut remux_start = req.start;
@@ -215,6 +230,9 @@ async fn stream_start(State(s): State<Shared>, Query(q): Query<StartQuery>) -> A
             mode: at.mode.as_str(),
             encoder: at.encoder.clone(),
             start: at.start,
+            // Stream copy cuts segments wherever the source has keyframes, so only
+            // re-encoded output has the fixed segment grid a VOD playlist needs.
+            vod_duration: (at.mode != plan::Mode::Remux && probe.duration > 0.0).then(|| probe.duration - at.start),
             args: at.args,
         };
         match s.sessions.spawn(spec, cfg.transcode.max_sessions).await {

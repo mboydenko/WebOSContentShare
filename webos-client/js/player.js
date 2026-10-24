@@ -105,7 +105,7 @@ var Player = {
     P.updateOsd();
     P.showOsd();
 
-    Api.get('/api/media?' + qs({ root: item.root, path: item.path }), function (err, info) {
+    Api.get('/api/media?' + qs({ root: item.root, path: item.path, device: Device.name() }), function (err, info) {
       if (g !== P.gen) return;
       if (err) { P.fail('Не удалось открыть файл.\n' + err.message); return; }
       P.info = info;
@@ -137,8 +137,15 @@ var Player = {
 
   startAt: function (t) {
     var P = Player, info = P.info;
-    if (info.direct && !P.forceStream && P.burn === null && P.audioIndex === info.defaultAudio) P.playDirect(t);
+    if (info.direct && !P.forceStream && P.burn === null && P.audioIndex === info.defaultAudio && P.audioPlayable()) P.playDirect(t);
     else P.startStream(t);
+  },
+
+  /* A desktop browser would play Dolby/DTS tracks silently, so such files go through the server (AAC). */
+  audioPlayable: function () {
+    var info = Player.info, a = null;
+    for (var i = 0; i < info.audio.length; i++) if (info.audio[i].index === Player.audioIndex) a = info.audio[i];
+    return !a || Device.canDolby() || !/^(ac3|eac3|dts|truehd)$/.test(a.codec);
   },
 
   restart: function () { Player.startAt(Player.position()); },
@@ -163,7 +170,8 @@ var Player = {
     P.updateOsd();
     var params = {
       root: P.item.root, path: P.item.path, start: t.toFixed(2), client: clientId(),
-      mode: P.forceTranscode ? 'transcode' : 'auto', audio: P.audioIndex, burn: P.burn
+      mode: P.forceTranscode ? 'transcode' : 'auto', audio: P.audioIndex, burn: P.burn,
+      device: Device.name(), aac: Device.canDolby() ? null : 1
     };
     Api.get('/api/stream/start?' + qs(params), function (err, r) {
       if (g !== P.gen) return;
@@ -179,11 +187,31 @@ var Player = {
   },
 
   setSource: function (url, type) {
-    var P = Player, v = P.video;
+    var P = Player, v = P.video, g = P.gen;
     P.srcGen = P.gen;
+    P.destroyHls();
     v.pause();
     while (v.firstChild) v.removeChild(v.firstChild);
     v.removeAttribute('src');
+    if (type && Device.useHlsJs()) {
+      Device.loadHls(function (err) {
+        if (g !== P.gen) return;
+        if (err || !window.Hls.isSupported()) { P.fail('Этот браузер не умеет воспроизводить поток HLS.'); return; }
+        // Segments that are still being encoded are held by the server, hence long timeouts.
+        var hls = new window.Hls({
+          startPosition: 0, maxBufferLength: 30, maxMaxBufferLength: 60,
+          manifestLoadingTimeOut: 60000, fragLoadingTimeOut: 120000, fragLoadingMaxRetry: 4
+        });
+        P.hls = hls;
+        hls.on(window.Hls.Events.ERROR, function (ev, data) {
+          if (data.fatal && g === P.gen) P.onError();
+        });
+        hls.on(window.Hls.Events.MANIFEST_PARSED, function () { P.play(); });
+        hls.loadSource(url);
+        hls.attachMedia(v);
+      });
+      return;
+    }
     if (type) {
       var s = document.createElement('source');
       s.src = url;
@@ -197,9 +225,17 @@ var Player = {
     P.play();
   },
 
+  destroyHls: function () {
+    if (Player.hls) {
+      try { Player.hls.destroy(); } catch (e) {}
+      Player.hls = null;
+    }
+  },
+
   clearSource: function () {
     var v = Player.video;
     Player.srcGen = -1;
+    Player.destroyHls();
     v.pause();
     while (v.firstChild) v.removeChild(v.firstChild);
     v.removeAttribute('src');
@@ -356,8 +392,8 @@ var Player = {
   openPanel: function () {
     var P = Player, info = P.info;
     if (!info) return;
-    var a = $('tracks-audio'), s = $('tracks-subs'), first = null;
-    a.innerHTML = ''; s.innerHTML = '';
+    var a = $('tracks-audio'), s = $('tracks-subs'), m = $('tracks-mode'), first = null;
+    a.innerHTML = ''; s.innerHTML = ''; m.innerHTML = '';
     function add(box, label, selected, action) {
       var el = document.createElement('div');
       el.className = 'track focusable' + (selected ? ' selected' : '');
@@ -381,6 +417,11 @@ var Player = {
         })(info.subtitles[j]);
       }
     }
+    if (info.kind === 'video') {
+      add(m, 'Авто (лучшее качество)', !P.forceTranscode, function () { P.selectMode(false); });
+      add(m, 'Перекодировать (если тормозит)', P.forceTranscode, function () { P.selectMode(true); });
+    }
+    $('tracks-mode-hint').textContent = P.modeDescription();
     P.panelOpen = true;
     $('tracks').classList.add('show');
     Nav.setScope($('tracks'), first);
@@ -391,6 +432,24 @@ var Player = {
     $('tracks').classList.remove('show');
     Nav.setScope(Player.el);
     Nav.focus(null); // keys go to the player itself; the Back button is for the pointer
+  },
+
+  /* Manual override for files the TV plays badly even though it claims support. */
+  selectMode: function (transcode) {
+    var P = Player;
+    if (transcode === P.forceTranscode) return;
+    P.forceTranscode = transcode;
+    P.forceStream = transcode;
+    toast(transcode ? 'Перекодирую видео в лёгкий для ТВ формат…' : 'Возвращаю исходное качество…');
+    P.restart();
+  },
+
+  modeDescription: function () {
+    var P = Player, info = P.info || {};
+    var now = { direct: 'Сейчас: исходный файл без изменений.', remux: 'Сейчас: исходное видео, перепакованное для ТВ.',
+      transcode: 'Сейчас: видео перекодируется на компьютере.', audio: '' }[P.streamMode] || '';
+    var why = info.reasons && info.reasons.length && P.streamMode !== 'direct' ? ' Причина: ' + info.reasons.join('; ') + '.' : '';
+    return now + why;
   },
 
   selectAudio: function (index) {

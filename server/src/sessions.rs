@@ -51,6 +51,9 @@ pub struct Session {
     pub mode: &'static str,
     pub encoder: String,
     pub start: f64,
+    /// Length of the output when segment boundaries are known in advance (transcode/audio):
+    /// the playlist is then served as a complete VOD list instead of a growing EVENT one.
+    vod_duration: Option<f64>,
     created: Instant,
     dir: PathBuf,
     pid: Option<u32>,
@@ -158,23 +161,30 @@ impl Session {
     }
 
     async fn serve_playlist(&self) -> ApiResult<Response> {
-        let path = self.dir.join("index.m3u8");
-        let deadline = Instant::now() + Duration::from_secs(60);
-        let text = loop {
-            if let Ok(t) = tokio::fs::read_to_string(&path).await
-                && t.contains("#EXTINF") {
-                    break t;
-                }
-            if self.finished.load(SeqCst) || Instant::now() > deadline {
-                return Err(ApiError::internal(format!("Поток не готов. {}", self.log_tail())));
+        let body = match self.vod_duration {
+            Some(d) => vod_playlist(d),
+            None => {
+                let path = self.dir.join("index.m3u8");
+                let deadline = Instant::now() + Duration::from_secs(60);
+                let text = loop {
+                    if let Ok(t) = tokio::fs::read_to_string(&path).await
+                        && t.contains("#EXTINF")
+                    {
+                        break t;
+                    }
+                    if self.finished.load(SeqCst) || Instant::now() > deadline {
+                        return Err(ApiError::internal(format!("Поток не готов. {}", self.log_tail())));
+                    }
+                    sleep(Duration::from_millis(200)).await;
+                };
+                let limit = match self.last_segment.load(SeqCst) {
+                    n if n < 0 => INITIAL_SEGMENTS,
+                    n => n + 1 + PLAYLIST_LOOKAHEAD,
+                };
+                limit_playlist(&text, limit as usize)
             }
-            sleep(Duration::from_millis(200)).await;
         };
-        let limit = match self.last_segment.load(SeqCst) {
-            n if n < 0 => INITIAL_SEGMENTS,
-            n => n + 1 + PLAYLIST_LOOKAHEAD,
-        };
-        let mut resp = limit_playlist(&text, limit as usize).into_response();
+        let mut resp = body.into_response();
         let h = resp.headers_mut();
         h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/vnd.apple.mpegurl"));
         h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-store"));
@@ -207,6 +217,25 @@ impl Session {
     }
 }
 
+/// Complete playlist for output cut into fixed SEGMENT_SECONDS pieces (keyframes are forced
+/// at those points). Players treat it as an ordinary film: they start at 0 and know the end,
+/// unlike a growing EVENT list, which browsers handle like live TV (start near the edge, stall).
+/// Segments not encoded yet are simply waited for when requested.
+fn vod_playlist(duration: f64) -> String {
+    let seg = crate::plan::SEGMENT_SECONDS as f64;
+    let count = ((duration / seg).ceil() as usize).max(1);
+    let mut out = format!(
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n",
+        crate::plan::SEGMENT_SECONDS + 1
+    );
+    for i in 0..count {
+        let len = if i + 1 == count { (duration - seg * i as f64).max(0.1) } else { seg };
+        out.push_str(&format!("#EXTINF:{len:.3},\nseg{i:05}.ts\n"));
+    }
+    out.push_str("#EXT-X-ENDLIST\n");
+    out
+}
+
 /// Keeps at most `max_segments` segments and adds EXT-X-START so players begin at 0.
 fn limit_playlist(text: &str, max_segments: usize) -> String {
     let mut out = String::with_capacity(text.len() + 32);
@@ -233,6 +262,7 @@ pub struct SpawnSpec {
     pub mode: &'static str,
     pub encoder: String,
     pub start: f64,
+    pub vod_duration: Option<f64>,
     pub args: Vec<String>,
 }
 
@@ -363,6 +393,7 @@ impl Sessions {
             mode: spec.mode,
             encoder: spec.encoder,
             start: spec.start,
+            vod_duration: spec.vod_duration,
             created: Instant::now(),
             dir: dir.clone(),
             pid: child.id(),
@@ -488,6 +519,14 @@ mod tests {
         let out = limit_playlist(PL, 2);
         assert!(out.contains("seg00001.ts") && !out.contains("seg00002.ts") && !out.contains("ENDLIST"));
         assert!(out.contains("#EXT-X-START:TIME-OFFSET=0"));
+    }
+
+    #[test]
+    fn vod_playlist_covers_whole_duration() {
+        let pl = super::vod_playlist(10.5);
+        assert!(pl.contains("#EXT-X-PLAYLIST-TYPE:VOD") && pl.ends_with("#EXT-X-ENDLIST\n"));
+        assert!(pl.contains("seg00002.ts") && !pl.contains("seg00003.ts"));
+        assert!(pl.contains("#EXTINF:2.500,"));
     }
 
     #[test]
