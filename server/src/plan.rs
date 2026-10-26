@@ -385,7 +385,7 @@ pub fn attempts(p: &Probe, abs: &Path, req: &StreamReq, cfg: &Config, caps: &Cap
         let mut a = input_args(p, abs, remux_start, None);
         a.extend(["-map".into(), format!("0:{}", video.index), "-c:v".into(), "copy".into()]);
         if let Some(au) = audio {
-            audio_args(&mut a, au, &cfg.tv, req.aac_only);
+            audio_args(&mut a, au, &cfg.tv, req.aac_only, false);
         }
         hls_output(&mut a);
         list.push(Attempt { mode: Mode::Remux, encoder: "copy".into(), start: remux_start, args: a });
@@ -423,9 +423,13 @@ fn input_args(p: &Probe, abs: &Path, start: f64, hw: Option<&str>) -> Vec<String
     a
 }
 
-fn audio_args(a: &mut Vec<String>, s: &Stream, tv: &TvProfile, aac_only: bool) {
+/// `exact_start`: the video is re-encoded from a mid-file seek point. A copied audio track
+/// cannot be trimmed there and would start at the preceding keyframe (up to ~10 s early),
+/// leaving the picture frozen until the sound catches up, so it is re-encoded instead.
+fn audio_args(a: &mut Vec<String>, s: &Stream, tv: &TvProfile, aac_only: bool, exact_start: bool) {
     a.extend(["-map".into(), format!("0:{}", s.index)]);
-    let copy_ok = if aac_only { matches!(s.codec.as_str(), "aac" | "mp3") } else { audio_ok(s, tv, false, true) };
+    let codec_ok = if aac_only { matches!(s.codec.as_str(), "aac" | "mp3") } else { audio_ok(s, tv, false, true) };
+    let copy_ok = codec_ok && !exact_start;
     if copy_ok {
         a.extend(args(&["-c:a", "copy"]));
     } else if s.channels > 2 && aac_only {
@@ -573,7 +577,7 @@ fn transcode_args(
     }
 
     if let Some(au) = audio {
-        audio_args(&mut a, au, &cfg.tv, req.aac_only);
+        audio_args(&mut a, au, &cfg.tv, req.aac_only, req.start > 0.01);
     }
     hls_output(&mut a);
     a
@@ -641,6 +645,18 @@ mod tests {
         assert_eq!(info.stream_mode, "transcode");
         let unlimited = TvProfile { h264_max_refs: 0, ..TvProfile::default() };
         assert!(media_info(&p, Path::new("a.mkv"), &unlimited, vec![]).direct);
+    }
+
+    #[test]
+    fn transcode_after_seek_reencodes_audio() {
+        let p = probe("avi", vec![video("mpeg4", 8), audio("ac3", 6)]);
+        let at = |start: f64| {
+            let req = StreamReq { start, audio: None, burn: None, force_transcode: false, aac_only: false };
+            attempts(&p, Path::new("a.avi"), &req, &Config::default(), &Caps::default(), start)[0].args.join(" ")
+        };
+        assert!(at(0.0).contains("-c:a copy"));
+        let seeked = at(610.0);
+        assert!(!seeked.contains("-c:a copy") && seeked.contains("-c:a ac3"), "{seeked}");
     }
 
     #[test]
